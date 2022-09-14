@@ -1,0 +1,89 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  labels:
+    app: weka-kmod-drivers-build
+    app-version: "WEKA_SOFTWARE_VERSION"
+  name: weka-kmod-drivers-build
+spec:
+  successfulBuildsHistoryLimit: 1
+  failedBuildsHistoryLimit: 3
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  runPolicy: "Serial"
+  triggers:
+    - type: "ConfigChange"
+    - type: "ImageChange"
+  source:
+    images:
+      - from:
+          name: DRIVERS_IMAGE_URL
+          kind: DockerImage
+        paths:
+          - destinationDir: driver_sources
+            sourcePath: /driver_sources/.
+        DRIVERS_IMAGE_PULL_SECRET
+    type: Git
+    dockerfile: |
+      FROM OC_BUILD_TOOLKIT_IMAGE_URL
+
+      WORKDIR /build/
+      ADD driver_sources/driver_uio_pci_generic driver_uio_pci_generic
+      ADD driver_sources/kvc_weka kvc_weka
+      ADD driver_sources/simple-kmod simple-kmod
+      ADD driver_sources/weka_driver weka_driver
+      ADD driver_sources/weka_driver_igb_uio weka_driver_igb_uio
+      
+      RUN ls -al
+      RUN mkdir built_drivers
+
+      # Expecting kmod software version as an input to the build
+      ARG KMODVER
+
+      # Build simple-kmod (assuming we already have it in drivers container)
+      WORKDIR simple-kmod
+      RUN make all       KVER=$(rpm -q --qf "%{VERSION}-%{RELEASE}.%{ARCH}"  kernel-core) KMODVER=${KMODVER} \
+      && make install   KVER=$(rpm -q --qf "%{VERSION}-%{RELEASE}.%{ARCH}"  kernel-core) KMODVER=${KMODVER}
+
+      WORKDIR /build/
+
+      # uio_pci_generic
+      # Prep and build the module
+      WORKDIR driver_uio_pci_generic/
+      RUN make
+      WORKDIR /build/
+      RUN cp driver_uio_pci_generic/uio_pci_generic.ko built_drivers/
+
+      # igb_uio
+      # Prep and build the module
+      WORKDIR weka_driver_igb_uio/dpdk/
+      RUN make config lib/librte_eal/common_sub lib/librte_eal/linuxapp/igb_uio_sub V=1 T=x86_64-native-linuxapp-gcc
+      WORKDIR /build/
+      RUN cp  weka_driver_igb_uio/dpdk/build/kmod/igb_uio.ko built_drivers/
+
+      # weka driver
+      WORKDIR weka_driver
+      RUN ./build.sh
+      WORKDIR /build/
+      RUN cp weka_driver/wekafsio.ko  built_drivers/ \
+      && cp weka_driver/wekafsgw.ko built_drivers/
+
+      RUN cp built_drivers/* /lib/modules/$(rpm -q --qf "%{VERSION}-%{RELEASE}.%{ARCH}"  kernel-core)/
+      RUN depmod -F /lib/modules/`uname -r`/System.map `uname -r`
+
+      # Build the helper tools (assuming we have them on image)
+      WORKDIR kvc_weka/
+      RUN mkdir -p /usr/lib/kvc/ \
+      && mkdir -p /etc/kvc/ \
+      && make install
+
+      RUN systemctl enable kmods-via-containers@weka-kmod
+  strategy:
+    dockerStrategy:
+      buildArgs:
+        - name: KMODVER
+          value: WEKA_SOFTWARE_VERSION
+  output:
+    to:
+      kind: ImageStreamTag
+      name: weka-kmod-drivers-container:WEKA_SOFTWARE_VERSION

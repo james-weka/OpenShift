@@ -1,0 +1,58 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: storageclass-wekafs-dir-api
+provisioner: csi.weka.io
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+parameters:
+  volumeType: dir/v1
+  filesystemName: default
+  capacityEnforcement: HARD
+  csi.storage.k8s.io/provisioner-secret-name: &secretName csi-wekafs-api-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: &secretNamespace csi-wekafs
+  csi.storage.k8s.io/controller-publish-secret-name: *secretName
+  csi.storage.k8s.io/controller-publish-secret-namespace: *secretNamespace
+  csi.storage.k8s.io/controller-expand-secret-name: *secretName
+  csi.storage.k8s.io/controller-expand-secret-namespace: *secretNamespace
+  csi.storage.k8s.io/node-stage-secret-name: *secretName
+  csi.storage.k8s.io/node-stage-secret-namespace: *secretNamespace
+  csi.storage.k8s.io/node-publish-secret-name: *secretName
+  csi.storage.k8s.io/node-publish-secret-namespace: *secretNamespace
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc-wekafs-dir-api
+  namespace: csi-wekafs
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: storageclass-wekafs-dir-api
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: csi-app-on-dir-api
+  namespace: csi-wekafs
+spec:
+  # make sure that pod is scheduled only on node having weka CSI node running
+  nodeSelector:
+    topology.csi.weka.io/global: "true"
+  containers:
+    - name: my-frontend
+      image: ubuntu
+      volumeMounts:
+      - mountPath: "/data"
+        name: my-csi-volume
+      command: ["/bin/sh"]
+      args: ["-c", "while true; do echo `date` hello >> /data/temp.txt; sleep 10;done"]
+  volumes:
+    - name: my-csi-volume
+      persistentVolumeClaim:
+        claimName: pvc-wekafs-dir-api # defined in pvc-wekafs-dir-api.yaml

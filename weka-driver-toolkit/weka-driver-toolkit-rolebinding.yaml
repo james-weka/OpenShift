@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: weka-kmod-drivers-container
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: weka-kmod-drivers-container
+subjects:
+- kind: ServiceAccount
+  name: weka-kmod-drivers-container
+userNames:
+- system:serviceaccount:weka-kmod-drivers:weka-kmod-drivers-container

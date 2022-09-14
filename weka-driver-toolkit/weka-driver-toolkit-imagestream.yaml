@@ -1,0 +1,7 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  labels:
+    app: weka-kmod-drivers-container
+  name: weka-kmod-drivers-container
+spec: {}

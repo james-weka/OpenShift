@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: weka-kmod-drivers-container
+spec:
+  selector:
+    matchLabels:
+      app: weka-kmod-drivers-container
+  template:
+    metadata:
+      labels:
+        app: weka-kmod-drivers-container
+        app-version: "WEKA_SOFTWARE_VERSION"
+    spec:
+      serviceAccountName: weka-kmod-drivers-container
+      serviceAccount: weka-kmod-drivers-container
+      containers:
+      - image: INTERNAL_REGISTRY_URL/NAMESPACE/weka-kmod-drivers-container:WEKA_SOFTWARE_VERSION
+        name: weka-kmod-drivers-container
+        imagePullPolicy: Always
+        command: ["/sbin/init"]
+        tty: true
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "echo STARTED > /etc/last-state"]
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "echo STOPPING > /etc/last-state; systemctl stop kmods-via-containers@weka-kmod; echo STOPPED > /etc/last-state"]
+        securityContext:
+          privileged: true
+        volumeMounts:
+          - mountPath: /etc/last-state
+            name: last-state
+      volumes:
+        - name: last-state
+          hostPath:
+            path: /tmp/weka-driver-last-state
+            type: FileOrCreate
+      nodeSelector:
+        node-role.kubernetes.io/worker: ""

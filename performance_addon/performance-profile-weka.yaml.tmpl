@@ -1,0 +1,21 @@
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  namespace: openshift-performance-addon-operator
+  name: weka-client
+spec:
+  cpu:
+    reserved: 5-7
+    isolated: 0-4
+  hugepages:
+     defaultHugepagesSize: "DEFAULT_HUGE_PAGE_SIZE_SETTING"
+     pages:
+       - size: "2M"
+         count: 4096
+       - size: "1G"
+         count: 4
+         # TODO: add node: for numanode, must be configurable
+
+  nodeSelector:
+    node-role.kubernetes.io/worker-perf: ""
+

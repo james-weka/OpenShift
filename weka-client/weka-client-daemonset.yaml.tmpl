@@ -1,0 +1,148 @@
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: weka-client
+  namespace: NAMESPACE
+allowHostDirVolumePlugin: true
+allowPrivilegedContainer: true
+allowHostNetwork: true
+allowHostPID: true
+allowHostPorts: true
+privileged: true
+allowPrivilegeEscalation: true
+allowedCapabilities:
+- SYS_ADMIN
+defaultAddCapabilities: []
+defaultAllowPrivilegeEscalation: true
+
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+users:
+- system:serviceaccount:NAMESPACE:weka-client
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: weka-client
+  namespace: NAMESPACE
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: weka-client
+  namespace: NAMESPACE
+rules:
+- apiGroups:
+  - security.openshift.io
+  resources:
+  - securitycontextconstraints
+  verbs:
+  - use
+  resourceNames:
+  - privileged
+  -
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: weka-client
+  namespace: NAMESPACE
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: weka-client
+subjects:
+- kind: ServiceAccount
+  name: weka-client
+userNames:
+- system:serviceaccount:NAMESPACE:weka-client
+---
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: weka-client
+  namespace: NAMESPACE
+  labels:
+    app: weka-client
+    app-version: "WEKA_SOFTWARE_VERSION"
+  annotations:
+    irq-load-balancing.crio.io: "disable"
+    cpu-load-balancing.crio.io: "disable"
+    cpu-quota.crio.io: "disable"
+spec:
+  selector:
+    matchLabels:
+      app: weka-client
+  template:
+    metadata:
+      labels:
+        app: weka-client
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: weka-kmod-drivers-container
+      nodeSelector:
+        node-role.kubernetes.io/worker-perf: ""
+      serviceAccountName: weka-client
+      serviceAccount: weka-client
+      CLIENT_IMAGE_PULL_SECRET
+      hostNetwork: true
+      runtimeClassName: performance-weka-client
+      containers:
+        - name: wekaclient
+          tty: true
+          stdin: true
+          image: "CLIENT_IMAGE_URL"
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
+          volumeMounts:
+          - mountPath: /dev
+            name: dev
+          - mountPath: /var/run/weka-machine-id
+            name: machine-id
+          resources:
+            limits:
+              memory: POD_ALLOCATED_MEMORY
+              cpu: "REAL_CORE_COUNT"
+              POD_HUGE_PAGE_KEY: POD_HUGE_PAGE_VAL
+          env:
+            - name: BACKEND_PRIVATE_IP
+              valueFrom:
+                configMapKeyRef:
+                  name: weka-client-config
+                  key: private_ip
+            - name: BACKEND_NET
+              valueFrom:
+                configMapKeyRef:
+                  name: weka-client-config
+                  key: net
+            - name: IONODE_COUNT
+              value: "CORE_COUNT"
+            - name: WEKA_VERSION
+              value: "WEKA_SOFTWARE_VERSION"
+            - name: DEBUG_MODE
+              value: "1"
+
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: dev
+        hostPath:
+          path: /dev
+      - name: machine-id
+        hostPath:
+          path: /etc/weka-machine-id
+          type: FileOrCreate
